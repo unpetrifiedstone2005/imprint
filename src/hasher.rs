@@ -22,12 +22,13 @@ pub fn sparse_hash(path: &Path, size: u64) -> Result<Hash> {
     hasher.update(&buffer);
 
     let mid_target = (size / 2).saturating_sub((SPARSE_CHUNK / 2) as u64);
-    
     // If adjust_offset fails with our specific NAS error, fallback to full hash
     let middle = match adjust_offset_for_sparse(&file, mid_target, size) {
         Ok(offset) => offset,
         Err(e) if e.to_string() == "FS_NOT_SUPPORTED" => {
-            eprintln!("Warning: NAS/Network mount detected. Sparse hashing unsupported, falling back to full hash.");
+            eprintln!(
+                "Warning: NAS/Network mount detected. Sparse hashing unsupported, falling back to full hash."
+            );
             return full_hash(path);
         },
         Err(e) => return Err(e),
