@@ -22,7 +22,17 @@ pub fn sparse_hash(path: &Path, size: u64) -> Result<Hash> {
     hasher.update(&buffer);
 
     let mid_target = (size / 2).saturating_sub((SPARSE_CHUNK / 2) as u64);
-    let middle = adjust_offset_for_sparse(&file, mid_target, size);
+    
+    // If adjust_offset fails with our specific NAS error, fallback to full hash
+    let middle = match adjust_offset_for_sparse(&file, mid_target, size) {
+        Ok(offset) => offset,
+        Err(e) if e.to_string() == "FS_NOT_SUPPORTED" => {
+            eprintln!("Warning: NAS/Network mount detected. Sparse hashing unsupported, falling back to full hash.");
+            return full_hash(path);
+        },
+        Err(e) => return Err(e),
+    };
+
     read_at(&mut file, middle, &mut buffer)?;
     hasher.update(&buffer);
 
@@ -91,21 +101,34 @@ fn adjust_offset_for_sparse(file: &File, target: u64, _file_size: u64) -> u64 {
     fiemap_data.fm_length = u64::MAX;
     fiemap_data.fm_extent_count = 32;
 
-    if unsafe { fiemap(fd, &mut fiemap_data).is_ok() } {
-        let mapped = fiemap_data.fm_mapped_extents as usize;
-        if mapped > 0 {
-            for i in 0..mapped {
-                let extent = &fiemap_data.fm_extents[i];
-                let extent_start = extent.fe_logical;
-                let extent_end = extent_start + extent.fe_length;
+    let res = unsafe { fiemap(fd, &mut fiemap_data) };
+    
+    match res {
+        Ok(_) => {
+            let mapped = fiemap_data.fm_mapped_extents as usize;
+            if mapped > 0 {
+                for i in 0..mapped {
+                    let extent = &fiemap_data.fm_extents[i];
+                    let extent_start = extent.fe_logical;
+                    let extent_end = extent_start + extent.fe_length;
 
-                if target >= extent_start && target < extent_end {
-                    return target;
-                }
-                if extent_start > target {
-                    return extent_start;
+                    if target >= extent_start && target < extent_end {
+                        return Ok(target);
+                    }
+                    if extent_start > target {
+                        return Ok(extent_start);
+                    }
                 }
             }
+            Ok(target)
+        },
+        Err(e) => {
+            // Check for ENOTTY (25) or EOPNOTSUPP (95) which are standard for NAS
+            let code = e.raw_os_error();
+            if code == Some(25) || code == Some(95) {
+                anyhow::bail!("FS_NOT_SUPPORTED");
+            }
+            Ok(target) // Fallback for other non-critical ioctl errors
         }
     }
 

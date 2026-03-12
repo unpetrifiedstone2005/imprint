@@ -76,7 +76,11 @@ pub fn replace_with_link(
 
             Ok(Some(LinkType::Reflink))
         }
-        Err(_) => {
+        Err(e) => {
+            let raw_err = e.raw_os_error();
+            // 25 = ENOTTY (Inappropriate ioctl), 95 = EOPNOTSUPP (Operation not supported)
+            let is_nas_error = raw_err == Some(25) || raw_err == Some(95);
+
             if temp.exists() {
                 let _ = std::fs::remove_file(&temp);
             }
@@ -87,9 +91,16 @@ pub fn replace_with_link(
                 cleanup.disarm();
 
                 Ok(Some(LinkType::HardLink))
+            } else if is_nas_error {
+                // Clear error message regarding network mounts
+                anyhow::bail!(
+                    "Network Mount Detected: The NAS/Network share (SMB/NFS) does not support reflinking. \n\
+                     Action: Use --allow-unsafe-hardlinks or move the data to a local BTRFS/XFS partition."
+                )
             } else {
                 anyhow::bail!(
-                    "reflink not supported on this filesystem and --allow-unsafe-hardlinks not specified"
+                    "reflink not supported on this filesystem ({}) and --allow-unsafe-hardlinks not specified", 
+                    e
                 )
             }
         }
