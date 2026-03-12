@@ -1,0 +1,42 @@
+[package]
+name = "bdstorage"
+version = "0.1.2"
+edition = "2024"
+description = "A speed-first local data deduplication engine using tiered BLAKE3 hashing."
+license = "Apache-2.0"
+authors = ["Rakshat28"]
+repository = "https://github.com/Rakshat28/bdstorage"
+readme = "README.md"
+keywords = ["deduplication", "storage", "nvme", "blake3"]
+categories = ["command-line-utilities", "filesystem"]
+
+[[bin]]
+name = "bdstorage"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+blake3 = "1"
+bincode = "1"
+clap = { version = "4", features = ["derive"] }
+colored = "2"
+crossbeam = "0.8"
+filetime = "0.2"
+indicatif = "0.17"
+jwalk = "0.8"
+nix = { version = "0.27", features = ["ioctl"], optional = true }
+rayon = "1"
+redb = "2"
+reflink = "0.1"
+serde = { version = "1", features = ["derive"] }
+thiserror = "1"
+xattr = "1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = { version = "0.27", features = ["ioctl"] }
+
+[dev-dependencies]
+assert_cmd = "2"
+tempfile = "3"
+predicates = "3"
+walkdir = "2"
